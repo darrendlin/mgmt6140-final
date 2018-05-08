@@ -1,3 +1,11 @@
+##########################################################################################################################
+#################################   Darren Lin and Emily Pirie                             ###############################
+#################################   Applied Analytics and Predictive Modeling: MGMT 6160   ###############################
+#################################   5/8/2018                                               ###############################
+#################################   Final Project                                          ###############################
+##########################################################################################################################
+
+
 data <- read.csv('C:/Users/schoce/Documents/Applied Analytics and Predictive Modeling/Term Project/go_data_train.csv')
 val_data <- read.csv('C:/Users/schoce/Documents/Applied Analytics and Predictive Modeling/Term Project/go_data_val.csv')
 
@@ -12,6 +20,7 @@ set.seed(123)
 sample <- data[sample(1:nrow(data), 250000,replace=FALSE),]
 attach(sample)
 #summary(winner)
+sample <- na.omit(sample)
 
 #plot(winner, black_rating)
 #plot(winner~black_rating)
@@ -87,7 +96,8 @@ sample$group.b.ranking <- ifelse(sample$black_rating == '30k'| sample$black_rati
                                                              | sample$black_rating == 'Female Kisei'| sample$black_rating == 'Wangwi'
                                                              ,'1',0)))))
 # 1 = professional, 2 = Advanced Amatur, 3 = Intermediate Amatur, 4 = Causal Player, 5 = beginner
-sample$black_rating[which(sample$group.b.ranking == 0)]
+# code below shows the remaining cleanup efforts.
+# sample$black_rating[which(sample$group.b.ranking == 0)]
 
 sample <- sample[!sample$white_rating == "Wangzuo", ]
 sample <- sample[!sample$white_rating == "Shiduan", ]
@@ -148,7 +158,8 @@ sample$group.w.ranking <- ifelse(sample$white_rating == '30k'| sample$white_rati
                                                              | sample$white_rating == 'Kisei'| sample$white_rating == '3p, Female Honinbo'
                                                              ,'1',0)))))
 # 1 = professional, 2 = Advanced Amatur, 3 = Intermediate Amatur, 4 = Causal Player, 5 = beginner
-sample$white_rating[which(sample$group.w.ranking == 0)]
+# code below shows the remaining cleanup efforts.
+#sample$white_rating[which(sample$group.w.ranking == 0)]
 
 
 
@@ -160,16 +171,113 @@ summary(lm)
 glm <- glm(sample$winner~group.b.ranking+group.w.ranking+black_moves+white_moves+black_avg_subsequent_distance+white_avg_subsequent_distance+black_t1_quad+
              white_t1_quad, data = sample, family = 'binomial')
 summary(glm)
-#plot(glm)
 
 ####################### kmeans   ################################################
-?kknn
 #install.packages('kknn')
 library(kknn)
 #?kknn
 
 model <- train.kknn(winner ~ group.b.ranking+group.w.ranking+black_avg_subsequent_distance+white_avg_subsequent_distance, data = sample, kmax = 7)
 model
+
+prediction <- predict(model, sample[,-4])
+
+prediction
+prediction <- ifelse(prediction <= .05, 0,1)
+prediction <- as.data.frame(table(unlist(prediction)))
+CM <- table(sample$winner, prediction)
+CM
+
+accuracy <- (sum(diag(CM)))/sum(CM)
+accuracy
+
+plot(model)
+
+# predict using the validation dataset
+prediction <- predict(model, val_data[,-4])
+
+prediction
+prediction <- ifelse(prediction <= .05, 0,1)
+prediction <- as.data.frame(table(unlist(prediction)))
+CM <- table(sample$winner, prediction)
+CM
+
+accuracy <- (sum(diag(CM)))/sum(CM)
+accuracy
+
+plot(model)
+
+################## decision tree   #############################################
+
+install.packages("randomForest")
+install.packages('rattle')
+library('randomForest')
+library(rpart.plot)
+library(rattle)
+#sample <- na.omit(sample)
+boxplot(sample$white_moves, main='')
+# bin the average subsequent distances into ranges
+hist(black_avg_subsequent_dist_from_white)
+boxplot(sample$black_avg_subsequent_dist_from_white)
+d<- unique(sample$black_avg_subsequent_dist_from_white)
+e<- unique(sample$white_avg_subsequent_dist_from_black)
+
+sample$sub.dist.b.ranges <- ifelse(sample$black_avg_subsequent_dist_from_white < 1,'0',
+                                         ifelse(sample$black_avg_subsequent_dist_from_white > 1 & sample$black_avg_subsequent_dist_from_white <2, 1,
+                                               ifelse(sample$black_avg_subsequent_dist_from_white > 2 & sample$black_avg_subsequent_dist_from_white <3,2,
+                                                        ifelse(sample$black_avg_subsequent_dist_from_white > 3 & sample$black_avg_subsequent_dist_from_white <4,3,
+                                                               ifelse(sample$black_avg_subsequent_dist_from_white > 4 & sample$black_avg_subsequent_dist_from_white <5,4,
+                                                                      ifelse(sample$black_avg_subsequent_dist_from_white > 5 & sample$black_avg_subsequent_dist_from_white < 6,5,
+                                                                             ifelse(sample$black_avg_subsequent_dist_from_white > 6,6,0)))))))
+
+sample$sub.dist.w.ranges <- ifelse(sample$white_avg_subsequent_dist_from_black < 1,'0',
+                                   ifelse(sample$white_avg_subsequent_dist_from_black > 1 & sample$white_avg_subsequent_dist_from_black <2, 1,
+                                          ifelse(sample$white_avg_subsequent_dist_from_black > 2 & sample$white_avg_subsequent_dist_from_black <3,2,
+                                                 ifelse(sample$white_avg_subsequent_dist_from_black > 3 & sample$white_avg_subsequent_dist_from_black <4,3,
+                                                        ifelse(sample$white_avg_subsequent_dist_from_black > 4 & sample$white_avg_subsequent_dist_from_black <5,4,
+                                                               ifelse(sample$white_avg_subsequent_dist_from_black > 5 & sample$white_avg_subsequent_dist_from_black < 6,5,
+                                                                      ifelse(sample$white_avg_subsequent_dist_from_black > 6,6,0)))))))
+
+
+table1 <- data.frame(table(sample$sub.dist.w.ranges))
+table1 <- table1[order(-table1$Freq),]
+head(table1)
+length(sample$group.w.ranking)
+length(sample$group.b.ranking)
+
+#### tree modeling   ###
+tree2 <- rpart(sample$winner ~ sample$group.b.ranking+sample$group.w.ranking+sample$sub.dist.w.ranges+sample$sub.dist.b.ranges+
+                 sample$black_moves+sample$white_moves , data = sample, method = 'class')
+#plot(tree2)
+#text(tree2)
+fancyRpartPlot(tree2)	
+t_pred = predict(tree2,sample,type="class")
+confMat <- table(sample$winner,t_pred)
+confMat
+
+accuracy <- sum(diag(confMat))/sum(confMat)
+accuracy
+
+#### tree v3  ####
+
+tree3 <- rpart(sample$winner ~ sample$group.b.ranking+sample$group.w.ranking+sample$sub.dist.w.ranges+sample$sub.dist.b.ranges+
+                 sample$black_moves+sample$white_moves+black_t1_quad+black_t2_quad+black_t3_quad+white_t1_quad+white_t2_quad+
+                 white_t3_quad+black_unique_quads_101110+black_unique_quads_110+black_unique_quads_111210, data = sample, method = 'class')
+
+fancyRpartPlot(tree3)	
+t_pred = predict(tree3,sample,type="class")
+confMat <- table(sample$winner,t_pred)
+confMat
+
+accuracy <- sum(diag(confMat))/sum(confMat)
+accuracy
+
+#####################################    Processing the validation data   #######################################################
+# Should be run prior to modeling
+
+
+val_data <- na.omit(val_data)
+
 val_data <- val_data[!val_data$black_rating == "Wangzuo", ]
 val_data <- val_data[!val_data$black_rating == "Shiduan", ]
 val_data <- val_data[!val_data$black_rating == "Qiwang", ]
@@ -183,6 +291,13 @@ val_data <- val_data[!val_data$black_rating == "Mingren", ]
 val_data <- val_data[!val_data$black_rating == "NR", ]
 val_data <- val_data[!val_data$black_rating == "Tianyuan", ]
 val_data <- val_data[!val_data$black_rating == "GS Caltex Cup", ]
+
+
+length(val_data$black_moves)
+names(val_data)
+unique(val_data$black_rating)
+unique(val_data$group.b.ranking)
+
 val_data$group.b.ranking <- ifelse(val_data$black_rating == '30k'| val_data$black_rating == '29k'| val_data$black_rating == '28k'
                                    | val_data$black_rating == '27k'| val_data$black_rating == '26k'| val_data$black_rating == '25k'
                                    | val_data$black_rating == '24k'| val_data$black_rating == '23k'| val_data$black_rating == '22k'
@@ -228,6 +343,8 @@ val_data$group.b.ranking <- ifelse(val_data$black_rating == '30k'| val_data$blac
                                                                | val_data$black_rating == 'Kisei'| val_data$black_rating == '3p, Female Honinbo'
                                                                | val_data$black_rating == 'Female Kisei'| val_data$black_rating == 'Wangwi'
                                                                ,'1',0)))))
+# 1 = professional, 2 = Advanced Amatur, 3 = Intermediate Amatur, 4 = Causal Player, 5 = beginner
+val_data$black_rating[which(val_data$group.b.ranking == 0)]
 
 val_data <- val_data[!val_data$white_rating == "Wangzuo", ]
 val_data <- val_data[!val_data$white_rating == "Shiduan", ]
@@ -288,73 +405,20 @@ val_data$group.w.ranking <- ifelse(val_data$white_rating == '30k'| val_data$whit
                                                                | val_data$white_rating == 'Kisei'| val_data$white_rating == '3p, Female Honinbo'
                                                                ,'1',0)))))
 
-prediction <- predict(model, sample[,-4])
+# for the tree modeling:
+val_data$sub.dist.b.ranges <- ifelse(val_data$black_avg_subsequent_dist_from_white < 1,'0',
+                                     ifelse(val_data$black_avg_subsequent_dist_from_white > 1 & val_data$black_avg_subsequent_dist_from_white <2, 1,
+                                            ifelse(val_data$black_avg_subsequent_dist_from_white > 2 & val_data$black_avg_subsequent_dist_from_white <3,2,
+                                                   ifelse(val_data$black_avg_subsequent_dist_from_white > 3 & val_data$black_avg_subsequent_dist_from_white <4,3,
+                                                          ifelse(val_data$black_avg_subsequent_dist_from_white > 4 & val_data$black_avg_subsequent_dist_from_white <5,4,
+                                                                 ifelse(val_data$black_avg_subsequent_dist_from_white > 5 & val_data$black_avg_subsequent_dist_from_white < 6,5,
+                                                                        ifelse(val_data$black_avg_subsequent_dist_from_white > 6,6,0)))))))
 
-prediction
-prediction <- ifelse(prediction <= .05, 0,1)
-prediction <- as.data.frame(table(unlist(prediction)))
-CM <- table(sample$winner, prediction)
-CM
+val_data$sub.dist.w.ranges <- ifelse(val_data$white_avg_subsequent_dist_from_black < 1,'0',
+                                     ifelse(val_data$white_avg_subsequent_dist_from_black > 1 & val_data$white_avg_subsequent_dist_from_black <2, 1,
+                                            ifelse(val_data$white_avg_subsequent_dist_from_black > 2 & val_data$white_avg_subsequent_dist_from_black <3,2,
+                                                   ifelse(val_data$white_avg_subsequent_dist_from_black > 3 & val_data$white_avg_subsequent_dist_from_black <4,3,
+                                                          ifelse(val_data$white_avg_subsequent_dist_from_black > 4 & val_data$white_avg_subsequent_dist_from_black <5,4,
+                                                                 ifelse(val_data$white_avg_subsequent_dist_from_black > 5 & val_data$white_avg_subsequent_dist_from_black < 6,5,
+                                                                        ifelse(val_data$white_avg_subsequent_dist_from_black > 6,6,0)))))))
 
-accuracy <- (sum(diag(CM)))/sum(CM)
-accuracy
-
-plot(model)
-
-#############   clustering   #######################################################
-#install.packages("pvclust")
-library(pvclust)
-small.sample <- sample[sample(1:nrow(sample), 2500,replace=FALSE),]
-small.sample <- na.omit(small.sample)
-sum(is.na(small.sample))
-names(small.sample)
-small.sample <- small.sample[c('winner','komi','black_moves','white_moves')]
-#Ward's method (hierarchical):
-d <- dist(small.sample, method = "euclidean")
-fit <- hclust(d, method="ward.D") 
-plot(fit)   # this will create the dendrogram for you
-pvrect(fit, alpha=.95)
-#K-means:
-fit <- kmeans(small.sample, 5)  #input desired number of clusters
-
-################## decision tree   #############################################
-
-install.packages("randomForest")
-library('randomForest')
-library(rpart.plot)
-sample <- na.omit(sample)
-sample$black_moves <- as.factor(sample$black_moves)
-sample$white_moves <- as.factor(sample$white_moves)
-#sample$black_avg_subsequent_dist_from_white <- as.factor(sample$black_avg_subsequent_dist_from_white)
-#sample$white_avg_subsequent_dist_from_black <- as.factor(sample$white_avg_subsequent_dist_from_black)
-tree <- rpart(winner ~ black_avg_subsequent_dist_from_white+white_avg_subsequent_dist_from_black , data = sample)
-plot(tree)
-text(tree)
-prp(tree)
-# bin the average subsequent distances into ranges
-hist(black_avg_subsequent_dist_from_white)
-boxplot(sample$black_avg_subsequent_dist_from_white)
-max(black_avg_subsequent_dist_from_white)
-sample$black_avg_subsequent_dist_from_white <- as.numeric((sample$black_avg_subsequent_dist_from_white))
-sample$sub.dist.b.ranges <- ifelse(sample$black_avg_subsequent_dist_from_white < 1,'0',
-                                         ifelse(sample$black_avg_subsequent_dist_from_white > 1 & sample$black_avg_subsequent_dist_from_white <2, 1,2))
-                                          #       ifelse(sample$black_avg_subsequent_dist_from_white > 2 & sample$black_avg_subsequent_dist_from_white <3,2,
-                                                        ifelse(sample$black_avg_subsequent_dist_from_white > 3 & sample$black_avg_subsequent_dist_from_white <4,3,
-                                                               ifelse(sample$black_avg_subsequent_dist_from_white > 4 & sample$black_avg_subsequent_dist_from_white <5,4,
-                                                                      ifelse(sample$black_avg_subsequent_dist_from_white > 5 & sample$black_avg_subsequent_dist_from_white < 6,5,
-                                                                             ifelse(sample$black_avg_subsequent_dist_from_white > 6,6,0)))))))
-
-table1 <- data.frame(table(sample$sub.dist.b.ranges))
-table1 <- table1[order(-table1$Freq),]
-head(table1)
-
-tree2 <- rpart(winner ~ group.b.ranking+group.w.ranking+black_avg_subsequent_dist_from_white+white_avg_subsequent_dist_from_black , data = sample)
-plot(tree2)
-text(tree2)
-
-names(sample)
-lapply(sample, class)
-lapply(sample, sum(unique()))
-lapply(sample, as.factor)
-sum(unique(winner))
-sum(unique(black_moves))
